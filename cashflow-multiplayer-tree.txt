@@ -1,0 +1,7 @@
+cashflow-multiplayer/
+├── public/
+│   └── index.html          <-- 整合好的前端介面（Socket.IO + 資產面板 + 職業選擇）
+├── server.js               <-- Node.js 後端伺服器（Socket.IO 同步邏輯）
+├── package.json            <-- NPM 套件與啟動指令
+
+Lu760420074
