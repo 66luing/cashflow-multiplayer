@@ -2,318 +2,42 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>多人現金流遊戲</title>
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    #board {
-      display: grid;
-      grid-template-columns: repeat(12, 60px);
-      grid-template-rows: repeat(12, 60px);
-      gap: 2px;
-      margin: 20px auto;
-      width: fit-content;
-    }
-    .tile {
-      width: 60px; height: 60px;
-      border: 1px solid #333;
-      position: relative;
-    }
-    .tile-inner {
-      position: absolute;
-      width: 100%; height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      flex-direction: column;
-    }
-    .player-img {
-      width: 30px; height: 30px;
-      border-radius: 50%;
-      background: gray;
-      border: 2px solid #fff;
-      margin-top: 3px;
-    }
-    .player-img.p0 { background: red; }
-    .player-img.p1 { background: green; }
-    .player-img.p2 { background: orange; }
-    .player-img.p3 { background: purple; }
-    .player-img.p4 { background: blue; }
-
-    #log-box {
-      width: 80%; margin: 20px auto; height: 200px;
-      border: 1px solid #aaa; overflow-y: auto;
-      text-align: left; padding: 10px;
-    }
-    #roll-btn:disabled {
-      background-color: #ccc;
-    }
-    .selector {
-      margin: 5px;
-    }
-    #assets {
-      display: none;
-      width: 80%; margin: 20px auto; text-align: left;
-    }
-    
-  </style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.socket.io;">
+  <link rel="manifest" href="manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>現金流遊戲</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>多人現金流遊戲</h1>
-
-  <div>
-    玩家人數（1~5）：
-    <input type="number" id="player-count" min="1" max="5" value="2" onchange="renderSelectors()">
-    玩家名稱：<input type="text" id="playerName" placeholder="輸入名稱">
+  <!-- 登入表單 -->
+  <div id="login-panel">
+    <input type="text" id="Room-ID" name="Room-ID" placeholder="聊天室：" >
+    <label id="playerCount"> </label>
+    <button id="invite-btn">📩 邀請</button> <!-- 新增邀請按鈕 -->
+    <input type="text" id="player-name" placeholder="玩家名稱">
     <select id="jobSelect">
-      <option value="RANDOM">🎲 隨機職業</option>
+      <option value="RANDOM">職業</option>
+      <!-- 其他職業選項 -->
     </select>
-    <button onclick="joinGame()">加入遊戲</button>
-    <div id="selectors"></div>
-    <button onclick="startGame()">開始遊戲</button>
+    <button id="login-btn">登入</button>
+    <button id="start-game-btn" style="display:none;">開始遊戲</button> <!-- 新增開始遊戲按鈕 -->
   </div>
 
-  <hr>
-  <button id="roll-btn" onclick="rollDice()">擲骰子</button>
-  <button onclick="toggleAssets()">查看資產</button>
-
-  <div id="board"></div>
-  <div id="log-box"><div id="log"></div></div>
-  <div id="assets" style="display:none; text-align:left; width: 80%; margin: 10px auto; font-size:14px;"></div>
-
-  <hr>
-  <button id="roll-btn" disabled onclick="nextTurn()">下一位玩家擲骰</button>
-  <div id="board"></div>
-  <div id="log-box"><div id="log"></div></div>
-
-  <script>
-    const socket = io();
-    socket.emit('testEvent', { message: '測試訊息' });
-
-    socket.on('testResponse', (data) => {
-      console.log('伺服器回應：', data.message);
-    });
-
-    const professions = {
-      "門衛": { salary: 1500, expense: 800, cash: 500, debt: 1000 },
-      "卡車司機": { salary: 2000, expense: 1000, cash: 800, debt: 2000 },
-      "秘書": { salary: 2200, expense: 1200, cash: 1000, debt: 2500 },
-      "護士": { salary: 2500, expense: 1500, cash: 1500, debt: 3000 },
-      "警察": { salary: 2800, expense: 1600, cash: 1800, debt: 4000 },
-      "小學教師": { salary: 3000, expense: 1700, cash: 2000, debt: 4500 },
-      "經理": { salary: 4000, expense: 2200, cash: 3000, debt: 6000 },
-      "工程師": { salary: 4500, expense: 2500, cash: 4000, debt: 8000 },
-      "機械師": { salary: 4200, expense: 2400, cash: 3500, debt: 7500 },
-      "飛行員": { salary: 6000, expense: 3500, cash: 6000, debt: 10000 },
-      "律師": { salary: 7000, expense: 4000, cash: 8000, debt: 12000 },
-      "醫生": { salary: 8000, expense: 5000, cash: 10000, debt: 15000 }
-    };
-    
-    const outerPath = [
-      [2,2],[2,3],[2,4],[2,5],[2,6],[2,7],[2,8],[2,9],
-      [3,9],[4,9],[5,9],[6,9],[7,9],[8,9],
-      [9,9],[9,8],[9,7],[9,6],[9,5],[9,4],[9,3],[9,2],
-      [8,2],[7,2],[6,2],[5,2],[4,2],[3,2]
-    ];
-    
-    const innerPath = [
-      [4, 4], [4, 5], [4, 6], [4, 7],
-      [5, 7], [6, 7],
-      [7, 7], [7, 6], [7, 5], [7, 4],
-      [6, 4], [5, 4]
-    ];
-
-    let players = [];
-    let currentPlayerIndex = 0;
-    let myId = null;
-
-    for (const job in professions) {
-      document.getElementById("jobSelect").innerHTML += `<option value="${job}">${job}</option>`;
-    }
-
-    function renderSelectors() {
-      const count = parseInt(document.getElementById("player-count").value);
-      const container = document.getElementById("selectors");
-      container.innerHTML = "";
-
-      for (let i = 0; i < count; i++) {
-        const sel = document.createElement("select");
-        sel.className = "selector";
-        sel.id = `player${i}`;
-        sel.innerHTML = `<option value="RANDOM">🎲 隨機職業</option>`;
-        for (let p in professions) {
-          sel.innerHTML += `<option value="${p}">${p}</option>`;
-        }
-        container.innerHTML += `玩家${i + 1}: `;
-        container.appendChild(sel);
-        container.innerHTML += "<br>";
-      }
-    }
-
-    function startGame() {
-      players = [];
-      generateBoard();
-      document.getElementById("roll-btn").disabled = false;
-      const count = parseInt(document.getElementById("player-count").value);
-
-      for (let i = 0; i < count; i++) {
-        let job = document.getElementById(`player${i}`).value;
-        if (job === "RANDOM") {
-          const keys = Object.keys(professions);
-          job = keys[Math.floor(Math.random() * keys.length)];
-        }
-        const prof = professions[job];
-        const start = innerPath[0];
-        players.push({
-          name: `玩家${i + 1}`,
-          job,
-          ...prof,
-          pathIndex: 0,
-          inOuterRing: false,
-          row: start[0],
-          col: start[1]
-        });
-        log(`${players[i].name} 是 ${job}，薪資: $${prof.salary}，支出: $${prof.expense}`);
-//players[0].stocks.push({ name: "鴻海", amount: 10, price: 85 });
-//players[0].properties.push({ name: "小套房", value: 30000, rent: 500 });
-//players[0].businesses.push({ name: "早餐店", income: 800 });
-      }
-      currentPlayerIndex = 0;
-      renderPlayerPositions();
-    }
-
-    function generateBoard() {
-      const board = document.getElementById("board");
-      board.innerHTML = "";
-      for (let row = 0; row < 12; row++) {
-        for (let col = 0; col < 12; col++) {
-          const tile = document.createElement("div");
-          tile.className = "tile";
-          tile.dataset.row = row;
-          tile.dataset.col = col;
-          const inner = document.createElement("div");
-          inner.className = "tile-inner";
-          const isOuter = outerPath.some(p => p[0] === row && p[1] === col);
-          const isInner = innerPath.some(p => p[0] === row && p[1] === col);
-          const isCenter = row >= 5 && row <= 6 && col >= 5 && col <= 6;
-
-          if (isCenter) {
-            tile.style.backgroundColor = "#eeeeee";
-          } else if (isOuter) {
-            tile.style.backgroundColor = "#fce4ec";
-            inner.textContent = "外";
-          } else if (isInner) {
-            tile.style.backgroundColor = "#e8f5e9";
-            inner.textContent = "內";
-          } else {
-            tile.style.backgroundColor = "#eeeeee";
-          }
-          tile.appendChild(inner);
-          board.appendChild(tile);
-        }
-      }
-    }
-
-    function joinGame() {
-      const name = document.getElementById("playerName").value.trim();
-      if (!name) return alert("請輸入玩家名稱");
-      const jobSelect = document.getElementById("jobSelect").value;
-      let job = jobSelect;
-      if (job === "RANDOM") {
-        const keys = Object.keys(professions);
-        job = keys[Math.floor(Math.random() * keys.length)];
-      }
-      const data = {
-        name, job, ...professions[job]
-      };
-      socket.emit("joinGame", data);
-    }
-
-    function rollDice() {
-      socket.emit("rollDice");
-    }
-
-    function toggleAssets() {
-      const panel = document.getElementById("assets");
-      panel.style.display = panel.style.display === "none" ? "block" : "none";
-      if (panel.style.display === "block") updateAssetsDisplay();
-    }
-
-    function updateAssetsDisplay() {
-      const panel = document.getElementById("assets");
-      panel.innerHTML = players.map((p, i) => `
-        <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
-          <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px; background:#f9f9f9">
-        <h4>${p.name} - ${p.job}</h4>
-        <div>💵 現金：$${p.cash}</div>
-        <div>💳 債務：$${p.debt}</div>
-        <div>📈 薪資：$${p.salary}｜📉 支出：$${p.expense}</div>
-        <div>🏠 房地產：${(p.properties || []).map(x => `${x.name}（$${x.value} / 租金 $${x.rent}）`).join(", ") || "無"}</div>
-        <div>📊 股票：${(p.stocks || []).map(x => `${x.name} × ${x.amount}（$${x.price}）`).join(", ") || "無"}</div>
-        <div>💼 企業：${(p.businesses || []).map(x => `${x.name}（收益 $${x.income}）`).join(", ") || "無"}</div>
-      </div>
-      `).join("<hr>");
-    }
-
-    function log(msg) {
-      const logBox = document.getElementById("log");
-      logBox.innerHTML += `<div>${msg}</div>`;
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-
-    function renderPlayerPositions() {
-      ///document.querySelectorAll(".tile-inner").forEach(tile => tile.innerHTML = "");
-      document.querySelectorAll(".tile-inner").forEach(tile => {
-        tile.querySelectorAll(".player-img").forEach(p => p.remove());
-      });
-      players.forEach((player, i) => {
-        const selector = `.tile[data-row="${player.row}"][data-col="${player.col}"] .tile-inner`;
-        const container = document.querySelector(selector);
-        if (container) {
-          const img = document.createElement("div");
-          img.className = `player-img p${i}`;
-          img.title = player.name;
-          container.appendChild(img);
-        }
-      });
-    }
-
-    socket.on("connect", () => {
-      myId = socket.id;
-    });
-
-    function rollDice() {
-      return Math.floor(Math.random() * 6) + 1;
-    }
-
-    function nextTurn() {
-      const player = players[currentPlayerIndex];
-      const steps = rollDice();
-      log(`${player.name} 擲出 ${steps} 點`);
-
-      const path = player.inOuterRing ? outerPath : innerPath;
-      player.pathIndex = (player.pathIndex + steps) % path.length;
-      const [newRow, newCol] = path[player.pathIndex];
-      player.row = newRow;
-      player.col = newCol;
-
-      renderPlayerPositions();
-      log(`${player.name} 移動到 (${newRow}, ${newCol})`);
-
-      // 換下一位
-      currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-    }
-
-    socket.on("updateGame", (state) => {
-      players = state.players;
-      currentPlayerIndex = state.currentPlayerIndex;
-      renderPlayerPositions();
-      updateAssetsDisplay();
-    });
-
-    // 預設渲染2位選擇器
-    renderSelectors();
-  </script>
+  <!-- 遊戲主畫面 -->
+  <!--div id="game-container" style="display:none;"-->
+  <div id="game-container">  
+    <canvas id="game-map" width="1600" height="1600"></canvas>
+    <div id="hud">
+      <button id="roll-dice" disabled>🎲 擲骰子</button>
+      <button id="asset-btn" disabled>💵 查看資產</button>
+      <div id="log-box"><div id="log"></div></div>
+      <div id="asset-panel" style="display:none"></div>
+      <!--div id="asset-panel" style="display:none; text-align:left; width: 80%; margin: 10px auto; font-size:14px;"></div-->
+    </div>
+  </div>
+  <script src="socketio481/socket.io.min.js"></script>
+  <script src="js/game.js"></script>
+  <!--script nonce="<%= nonce %>" src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script-->
+  <!--script nonce="<%= nonce %>" src="js/game.js"></script-->
 </body>
 </html>
