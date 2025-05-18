@@ -1,0 +1,12 @@
+cashflow-game/
+├── server/               # 後端
+│   ├── cards.json       # 卡片資料
+│   ├── dreams.json      # 夢想卡
+│   └── server.js        # 主程式
+├── public/              # 前端
+│   ├── css/
+│   │   └── style.css   # 樣式
+│   ├── js/
+│   │   └── game.js     # 遊戲邏輯
+│   └── index.html       # 主頁面
+└── package.json         # Node.js 依賴
