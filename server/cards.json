@@ -1,0 +1,12 @@
+[
+  {
+    "type": "機會卡",
+    "description": "發現金礦！獲得 $10,000",
+    "action": { "cash": 10000 }
+  },
+  {
+    "type": "意外卡",
+    "description": "車禍修車費用 $5,000",
+    "action": { "cash": -5000 }
+  }
+]
